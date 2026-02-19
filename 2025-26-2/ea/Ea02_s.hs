@@ -118,8 +118,9 @@ instance Functor FunFromInt where
 --     fmap :: (a -> b) -> FunToInt a -> FunToInt b
 --     fmap f (FunToInt g) = FunToInt $ \b -> g _ -- impossible
 
-data Crazy a = Crazy (((Int -> a) -> Int) -> (Int -> a))
---                             ^ co  ^ contr ^ contr ^ covaraiant
+-- data Crazy a = Crazy (((Int -> a) -> Int) -> (Int -> a))
+    -- deriving Functor
+--                                ^ co  ^ contr ^ contr ^ covaraiant
 --                       -     +      -       -     +
 -- because all a-s are in positive positions, this is a Functor
 -- In the expression tree the root is + (covariant)
@@ -140,15 +141,27 @@ data Crazy2 b = Crazy2 (((b -> Int) -> Int) -> Int -> b) --
 
 -- type argument can be covariant or contravariant
 
+data Crazy a = Crazy (((Int -> a) -> Int) -> (Int -> a))
 
+instance Functor Crazy where
+    -- fmap :: (a -> b) -> (Crazy (((Int -> a) -> Int) -> (Int -> a))) -> (Crazy (((Int -> b) -> Int) -> (Int -> b)))
+    -- this is stupid
 
+    fmap :: (a -> b) -> Crazy a -> Crazy b
+    fmap f (Crazy g) = Crazy h where
+        -- h :: (((Int -> b) -> Int) -> (Int -> b))
+        h ibi i = f $ g (\ia -> ibi (f . ia)) i 
 
 class Contravariant f where
     contramap :: (b -> a) -> f a -> f b
 
-data Endo a = Endo (a -> a) 
-    -- invaraiant functor: (a -> b) -> 
 
+data Endo a = Endo (a -> a)
+-- invariant functor: (a -> b) -> (b -> a) -> f a -> f b
+
+imap :: (a -> b) -> (b -> a) -> Endo a -> Endo b
+imap f g (Endo x) = Endo h where
+    h y = f (x $ g y) 
 
 {-
     bivariant
@@ -163,6 +176,11 @@ covariant contravariant
 fix :: (a -> a) -> a
 fix f = f (fix f) -- = f (f (fix f)) = ... = f $ f $ f $ ... 
 -- only works because of laziness
+
+ct :: Bool -> Bool
+ct _ = True
+
+-- fix ct = True
 
 ones :: [Int]
 ones = fix $ \xs -> 1 : xs
