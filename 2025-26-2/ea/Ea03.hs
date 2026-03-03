@@ -241,6 +241,8 @@ foldl_ :: Foldable f => (b -> a -> b) -> b -> f a -> b
 foldl_ f b t =
   getEndo (getDual (foldMap (\a -> Dual (Endo (flip f a))) t)) b
 
+-- we need dual otherwise the folding will be flipped
+
 -- without Dual:
 -- foldl_ f b [x, y, z] =
 -- flip f x . flip f y . flip f z $ b
