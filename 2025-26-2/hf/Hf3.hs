@@ -66,9 +66,21 @@ instance Semigroup (Endo b) where
 instance Monoid (Endo b) where
     mempty = Endo id
 
+newtype Dual a = Dual a
+
+instance Semigroup a => Semigroup (Dual a) where
+    (<>) :: Dual a -> Dual a -> Dual a
+    Dual x <> Dual y = Dual (y <> x) -- we flip it
+
+instance Monoid a => Monoid (Dual a) where
+    mempty = Dual mempty
+
+
 destructEndo :: Endo b -> (b -> b)
 destructEndo (Endo f) = f
 
+destructDual :: Dual a -> a
+destructDual (Dual a) = a
 
 foldMap'' :: (Foldable t, Monoid m) => (a -> m) -> t a -> m
 foldMap'' f = foldl (\m a -> m <> f a) mempty
@@ -76,4 +88,8 @@ foldMap'' f = foldl (\m a -> m <> f a) mempty
 foldl' :: (Foldable t) => (b -> a -> b) -> b -> t a -> b
 -- foldl' f b x = destructEndo (foldMap (\a -> Endo (\y -> f y a)) x) b
 -- foldl' f b x = destructEndo (foldMap (\a -> Endo (flip f a)) x) b
-foldl' f b x = destructEndo (foldMap (Endo . flip f) x) b
+-- foldl' f b x = destructEndo (foldMap (Endo . flip f) x) b
+-- this folds from the right
+
+-- now it folds from the right
+foldl' f b x = destructEndo (destructDual (foldMap (Dual . Endo . flip f) x)) b

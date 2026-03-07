@@ -195,4 +195,4 @@ readAndAdd'' = traverse (\x -> readLn >>= \y -> return $ x + y)
 -- Másik megközelítése a monándak: a join művelet
 
 join' :: Monad m => m (m a) -> m a
-join' = undefined
+join' mma = mma >>= id
