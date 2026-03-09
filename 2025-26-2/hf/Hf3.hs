@@ -10,6 +10,10 @@ instance Foldable Tree where
     foldMap f (Leaf (Just a)) = f a
     foldMap f (Node x a y) = foldMap f x <> f a <> foldMap f y
 
+    foldr :: (a -> b -> b) -> b -> Tree a -> b
+    foldr f b (Leaf Nothing) = b
+    foldr f b (Leaf (Just a)) = f a b
+    foldr f b (Node x a y) = foldr f (f a (foldr f b y)) x
 
 
 data Gofri f a
@@ -22,6 +26,8 @@ instance Foldable f => Foldable (Gofri f) where
     foldMap :: Monoid m => (a -> m) -> Gofri f a -> m
     foldMap f (MkGofri fa x) = foldMap f fa <> foldMap (foldMap f) x
 
+    foldr :: (a -> b -> b) -> b -> Gofri f a -> b
+    foldr f b (MkGofri fa x) = foldr f (foldr (\ga d -> foldr f d ga) b x) fa
 
 data CrazyType3 a b
     = CrazyCon1 a b a 
@@ -35,6 +41,10 @@ instance Foldable (CrazyType3 a) where
     foldMap f (CrazyCon2 x lb la) = foldMap f x <> foldMap f lb
     foldMap f (CrazyCon3 ctib cta llb) = foldMap f ctib <> foldMap (foldMap f) llb
 
+    foldr :: (b -> c -> c) -> c -> CrazyType3 a b -> c
+    foldr f b (CrazyCon1 x y z) = f y b
+    foldr f b (CrazyCon2 x lb la) = foldr f (foldr f b lb) x
+    foldr f b (CrazyCon3 ctib cta llb) = foldr f (foldr (flip (foldr f)) b llb) ctib
 
 
 foldMap' :: (Foldable t, Monoid m) => (a -> m) -> t a -> m
