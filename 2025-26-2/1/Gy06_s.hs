@@ -101,10 +101,10 @@ labelListR (x:xs) =
 -- Definiáljuk a sum függvényt úgy, hogy az olvasási környezetben van a részösszeg
 
 sumTRR :: Num a => [a] -> Reader a a
-sumTRR [] = ask
-sumTRR (x : xs) = 
-  local (+ x) $ sumTRR xs
--- sumTRR = foldr (\ x -> local (+ x)) ask
+-- sumTRR [] = ask
+-- sumTRR (x : xs) = 
+--   local (+ x) $ sumTRR xs
+sumTRR = foldr (\ x -> local (+ x)) ask
 
 -- Definiáljuk a filterWithIndex függvényt amely index alapján is szűr
 
@@ -205,12 +205,13 @@ primes = unfoldr (\(x:xs) -> Just (x, filter (\y -> mod y x /= 0) xs)) [2..]
 
 -- Hasítsunk úgy egy integer listát, hogy minden elemével beleindexelünk a prímek listájába és tell-eljük azt a prímet
 hashIntList :: [Int] -> Writer Hash ()
-hashIntList [] = return ()
-hashIntList (x:xs) = 
-  tell (primes !! x) >>
-  hashIntList xs
+-- hashIntList [] = return ()
+-- hashIntList (x:xs) = 
+--   tell (primes !! x) >>
+--   hashIntList xs
+hashIntList = foldr (\ x -> (>>) (tell (primes !! x))) (return ())
 
 
 -- Hasítsunk tetszőleges hajtogatható tárolót
 hashFoldable :: Foldable f => f Int -> Writer Hash ()
-hashFoldable = undefined
+hashFoldable = foldr (\i -> (>>) (tell (primes !! i))) (return ())
