@@ -82,7 +82,75 @@ allInstructions ((Right i):xs) = i : allInstructions xs
 type M a = State ProgState a
 
 eval :: Program -> [Instruction] -> M ()
-eval p [] = _
+eval p [] = return ()
+eval p (i : is) = undefined
+  -- do
+  -- ...
+  -- return eval p is
+
+
+exec :: Program -> [Instruction] -> State ProgState [Instruction]
+exec p [] = return [] 
+-- exec p ((Mov dst src) : is) = getSrc src >>= putDst dst >> exec p is
+exec p ((Mov dst src) : is) = modifyDst dst src (flip const) >> exec p is
+exec p ((Add dst src) : is) = modifyDst dst src (+) >> exec p is
+exec p ((Mul dst src) : is) = modifyDst dst src (*) >> exec p is
+exec p ((Sub dst src) : is) = modifyDst dst src (-) >> exec p is
+exec p ((Cmp src1 src2) : is) = undefined
+exec p ((Jeq l) : is) = undefined
+exec p ((Jlt l) : is) = undefined
+exec p ((Jgt l) : is) = undefined
+
+modifyDst :: Destination -> Source -> (Int -> Int -> Int) -> State ProgState ()
+modifyDst dst src f = do
+  s <- getSrc src
+  d <- getSrc $ dstAsSrc dst
+  putDst dst (f d s)
+
+dstAsSrc :: Destination -> Source
+dstAsSrc (DstReg d) = SrcReg d
+dstAsSrc (DstDeref d) = SrcDeref d
+
+getSrc :: Source -> State ProgState Int
+getSrc (SrcReg r) = getR r
+  -- ps <- get
+  -- return $ r1 ps 
+-- getSrc (SrcReg r) = get >>= r2
+--   -- ps <- get
+--   -- return $ r2 ps 
+-- getSrc (SrcReg r) = get >>= r3
+  -- ps <- get
+  -- return $ r3 ps 
+getSrc (SrcDeref d) = do
+  addr <- getR d
+  ps <- get
+  return (memory ps !! addr)
+getSrc (SrcLit l) = return l
+
+
+getR :: Register -> State ProgState Int
+getR R1 = get >>= \ps -> return (r1 ps)
+getR R2 = get >>= \ps -> return (r2 ps)
+getR R3 = get >>= \ps -> return (r3 ps)
+
+putDst :: Destination -> Int -> State ProgState ()
+putDst (DstReg r) x = do
+  ps <- get
+  case r of  
+    R1 -> put (ps {r1 = x})
+    R2 -> put (ps {r2 = x})
+    R3 -> put (ps {r3 = x})
+putDst (DstDeref r) x = do
+  addr <- getR r
+  ps <- get
+  put (ps {memory = replaceAtIndex addr x (memory ps)})
+
+-- putCmp :: TODO cont here
+
+replaceAtIndex :: Int -> a -> [a] -> [a]
+replaceAtIndex i newVal xs = 
+  let (before, _:after) = splitAt i xs
+  in before ++ [newVal] ++ after
 
 -- futtatunk egy nyers programot a startState-ből kiindulva
 runProgram :: RawProgram -> ProgState
