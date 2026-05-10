@@ -65,6 +65,49 @@ p1 = [
   Right $ Mov (DstReg R2) (SrcLit 20)
   ]
 
+-- Kiszámoljuk 10 faktoriálisát, az eredményt r2-ben tároljuk
+p2 :: RawProgram
+p2 = [
+  Left "start",
+  Right $ Mov (DstReg R1) (SrcLit 10),
+  Right $ Mov (DstReg R2) (SrcLit 1),
+  Left "loop",
+  Right $ Mul (DstReg R2) (SrcReg R1),
+  Right $ Sub (DstReg R1) (SrcLit 1),
+  Right $ Cmp (SrcReg R1) (SrcLit 0),
+  Right $ Jgt "loop"
+  ]
+
+-- Feltöltjük 0-9-el a memóriát
+p3 :: RawProgram
+p3 = [
+  Left "start",
+  Right $ Mov (DstDeref R1) (SrcReg R1),
+  Right $ Add (DstReg R1) (SrcLit 1),
+  Right $ Cmp (SrcReg R1) (SrcLit 10),
+  Right $ Jlt "start"
+  ]
+
+-- Megnöveljük 1-el a memória összes mezőjét
+p4 :: RawProgram
+p4 = [
+  Left "start",
+  Right $ Add (DstDeref R2) (SrcLit 1),
+  Right $ Add (DstReg R2) (SrcLit 1),
+  Right $ Cmp (SrcReg R2) (SrcLit 10),
+  Right $ Jlt "start"
+  ]
+
+-- Kétszer hozzáadunk 1-et a harmadik regiszterhez
+p5 :: RawProgram
+p5 = [
+  Left "start",
+  Right $ Jeq "first",
+  Left "first",
+  Right $ Add (DstReg R3) (SrcLit 1),
+  Left "second",
+  Right $ Add (DstReg R3) (SrcLit 1)
+  ]
 type Program = [(Label, [Instruction])]
 
 toProgram :: RawProgram -> Program
@@ -82,26 +125,29 @@ allInstructions ((Right i):xs) = i : allInstructions xs
 type M a = State ProgState a
 
 eval :: Program -> [Instruction] -> M ()
-eval p [] = return ()
-eval p (i : is) = undefined
-  -- do
-  -- ...
-  -- return eval p is
+eval p [] = return () 
+eval p ((Mov dst src) : is) = getSrc src >>= putDst dst >> eval p is
+eval p ((Add dst src) : is) = modifyDst dst src (+) >> eval p is
+eval p ((Mul dst src) : is) = modifyDst dst src (*) >> eval p is
+eval p ((Sub dst src) : is) = modifyDst dst src (-) >> eval p is
+eval p ((Cmp src1 src2) : is) = putCmp src1 src2 >> eval p is
+eval p ((Jeq l) : is) = shouldJump EQ p >>= \b -> eval p (if b then calcJump l p else is)
+eval p ((Jlt l) : is) = shouldJump LT p >>= \b -> eval p (if b then calcJump l p else is)
+eval p ((Jgt l) : is) = shouldJump GT p >>= \b -> eval p (if b then calcJump l p else is)
 
 
-exec :: Program -> [Instruction] -> State ProgState [Instruction]
-exec p [] = return [] 
--- exec p ((Mov dst src) : is) = getSrc src >>= putDst dst >> exec p is
-exec p ((Mov dst src) : is) = modifyDst dst src (flip const) >> exec p is
-exec p ((Add dst src) : is) = modifyDst dst src (+) >> exec p is
-exec p ((Mul dst src) : is) = modifyDst dst src (*) >> exec p is
-exec p ((Sub dst src) : is) = modifyDst dst src (-) >> exec p is
-exec p ((Cmp src1 src2) : is) = undefined
-exec p ((Jeq l) : is) = undefined
-exec p ((Jlt l) : is) = undefined
-exec p ((Jgt l) : is) = undefined
+shouldJump :: Ordering -> Program -> M Bool
+shouldJump o p = do
+  ps <- get
+  return $ cmp ps == o
 
-modifyDst :: Destination -> Source -> (Int -> Int -> Int) -> State ProgState ()
+calcJump :: Label -> Program -> [Instruction]
+calcJump l p = 
+    case lookup l p of
+      Just jis -> jis
+      Nothing -> error "Cannot jump to label not present in program" 
+
+modifyDst :: Destination -> Source -> (Int -> Int -> Int) -> M ()
 modifyDst dst src f = do
   s <- getSrc src
   d <- getSrc $ dstAsSrc dst
@@ -111,29 +157,20 @@ dstAsSrc :: Destination -> Source
 dstAsSrc (DstReg d) = SrcReg d
 dstAsSrc (DstDeref d) = SrcDeref d
 
-getSrc :: Source -> State ProgState Int
+getSrc :: Source -> M Int
 getSrc (SrcReg r) = getR r
-  -- ps <- get
-  -- return $ r1 ps 
--- getSrc (SrcReg r) = get >>= r2
---   -- ps <- get
---   -- return $ r2 ps 
--- getSrc (SrcReg r) = get >>= r3
-  -- ps <- get
-  -- return $ r3 ps 
 getSrc (SrcDeref d) = do
   addr <- getR d
   ps <- get
   return (memory ps !! addr)
 getSrc (SrcLit l) = return l
 
-
-getR :: Register -> State ProgState Int
+getR :: Register -> M Int
 getR R1 = get >>= \ps -> return (r1 ps)
 getR R2 = get >>= \ps -> return (r2 ps)
 getR R3 = get >>= \ps -> return (r3 ps)
 
-putDst :: Destination -> Int -> State ProgState ()
+putDst :: Destination -> Int -> M ()
 putDst (DstReg r) x = do
   ps <- get
   case r of  
@@ -145,12 +182,17 @@ putDst (DstDeref r) x = do
   ps <- get
   put (ps {memory = replaceAtIndex addr x (memory ps)})
 
--- putCmp :: TODO cont here
-
 replaceAtIndex :: Int -> a -> [a] -> [a]
 replaceAtIndex i newVal xs = 
   let (before, _:after) = splitAt i xs
   in before ++ [newVal] ++ after
+
+putCmp :: Source -> Source -> M ()
+putCmp s1 s2 = do
+  x <- getSrc s1
+  y <- getSrc s2
+  ps <- get
+  put (ps {cmp = compare x y})
 
 -- futtatunk egy nyers programot a startState-ből kiindulva
 runProgram :: RawProgram -> ProgState
