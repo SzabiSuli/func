@@ -11,6 +11,8 @@ import Data.Functor
 import Data.Char
 import Data.Foldable
 import Data.Either
+import Data.List
+import Data.Maybe
 
 -- Parser
 
@@ -153,4 +155,113 @@ data RegEx
 
 
 pRegEx :: Parser RegEx
-pRegEx = undefined
+pRegEx = pChoice
+
+pAtom :: Parser RegEx
+pAtom = pChar <|> pRange <|> pAny <|> pEOF <|> pPar where
+  pChar :: Parser RegEx
+  pChar = REChar <$> nonSpecial
+
+  nonSpecial :: Parser Char
+  nonSpecial = satisfy (`notElem` "[]{}()*+?|-$")
+
+  pRange :: Parser RegEx
+  pRange = RERange <$> (char '[' *> anyChar <* char '-') <*> anyChar <* char ']'
+
+  pAny :: Parser RegEx
+  pAny = REAny <$ char '.'
+
+  pEOF :: Parser RegEx
+  pEOF = REEof <$ char '$' <|> pAny
+
+  pPar :: Parser RegEx
+  pPar = between (char '(') pRegEx (char ')')
+
+pPostfix :: Parser RegEx
+pPostfix = pMany <|> pSome <|> pOpt <|> pRep <|> pAtom where
+  pMany :: Parser RegEx
+  pMany = REMany <$> pAtom <* char '*'
+
+  pSome :: Parser RegEx
+  pSome = RESome <$> pAtom <* char '+'
+
+  pOpt :: Parser RegEx
+  pOpt = REOptional <$> pAtom <* char '?'
+
+  pRep :: Parser RegEx
+  pRep = RERepeat <$> pAtom <*> between (char '{') integer (char '}')
+
+pSeq :: Parser RegEx
+pSeq = chainr1 pPostfix (pure RESequence)
+
+pChoice :: Parser RegEx 
+pChoice = chainr1 pSeq (REChoice <$ char '|')
+
+
+makeParser :: RegEx -> Parser ()
+makeParser (REChar c) = char c
+makeParser (RERange c1 c2) = void $ satisfy (\c -> c1 <= c && c <= c2)
+makeParser REAny = void anyChar
+makeParser REEof = eof
+makeParser (REMany re) = void $ many (makeParser re)
+makeParser (RESome re) = void $ some (makeParser re)
+makeParser (REOptional re) = void $ optional (makeParser re)
+makeParser (RERepeat re i) = replicateM_ i (makeParser re)
+makeParser (RESequence re1 re2) = makeParser re1 >> makeParser re2
+makeParser (REChoice re1 re2) = makeParser re1 <|> makeParser re2
+
+
+test :: String -> String -> Maybe Bool
+test pattern input = do
+  -- small fix here, because the provided code did not type check
+  -- regEx <- evalParser pRegEx pattern
+  let e = evalParser pRegEx pattern
+  case e of 
+    Left _ -> Nothing
+    Right regEx -> return (isRight (evalParser (makeParser regEx) input))
+
+test' :: String -> String -> Bool
+test' regex str = fromJust $ test regex str
+
+licensePlate = "[A-Z]{3}[0-9]{3}$"
+hexColor = "0x([0-9]|[A-F]){6}$"
+
+-- regex101.com/r/rkScYV
+-- regexr.com/5rrhl
+streetName = "([A-Z][a-z]* )+(utca|út) [0-9]+([A-Z])?"
+
+tests' :: [Bool]
+tests' =
+  [       test' licensePlate "ABC123"
+  ,       test' licensePlate "IRF764"
+  ,       test' licensePlate "LGM859"
+  ,       test' licensePlate "ASD789"
+  , not $ test' licensePlate "ABCD1234"
+  , not $ test' licensePlate "ABC123asdf"
+  , not $ test' licensePlate "123ABC"
+  , not $ test' licensePlate "asdf"
+
+  --
+
+  ,       test' hexColor "0x000000"
+  ,       test' hexColor "0x33FE67"
+  ,       test' hexColor "0xFA55B8"
+  , not $ test' hexColor "1337AB"
+  , not $ test' hexColor "0x1234567"
+  , not $ test' hexColor "0xAA1Q34"
+
+  --
+
+  ,       test' streetName "Ady Endre út 47C"
+  ,       test' streetName "Karinthy Frigyes út 8"
+  ,       test' streetName "Budafoki út 3"
+  ,       test' streetName "Szilva utca 21A"
+  ,       test' streetName "Nagy Lantos Andor utca 9"
+  ,       test' streetName "T utca 1"
+  , not $ test' streetName "ady Endre út 47C"
+  , not $ test' streetName "KarinthyFrigyes út 8"
+  , not $ test' streetName "út 3"
+  , not $ test' streetName "Liget köz 21A"
+  , not $ test' streetName "Nagy  Lantos  Andor utca 9"
+  , not $ test' streetName "T utca"
+  ]
