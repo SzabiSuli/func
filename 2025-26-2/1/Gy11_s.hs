@@ -9,6 +9,7 @@ import Control.Monad
 import Data.Functor
 import Data.Char
 import Data.Foldable
+import GHC.Real (underflowError)
 
 -- Parser
 
@@ -280,7 +281,24 @@ evalExp (Var var) env = do
   case lookup var env of 
     Nothing -> throwError $ ScopeError $ "Variable '" ++ var ++ "' not in scope"
     Just val -> pure val 
-evalExp (LamLit var exp) env = undefined
+evalExp (LamLit var exp) env = pure $ VLam var env exp
+evalExp (e1 :+ e2) env = do
+  r1 <- evalExp e1 env
+  r2 <- evalExp e2 env
+  case (r1, r2) of
+    (VInt i1, VInt i2) -> pure $ VInt $ i1 + i2
+    (VFloat i1, VFloat i2) -> pure $ VFloat $ i1 + i2
+    _       -> throwError (TypeError $ "Type error in addition")
+-- other operations
+evalExp (e1 :$ e2) env = do
+  ee1 <- evalExp e1 env
+  case ee1 of 
+    (VLam var lenv le) -> do
+      ee2 <- evalExp e2 env
+      evalExp le ((var, ee2) : lenv)
+    _ -> throwError $ TypeError "Cannot apply arguments to a non lambda expression"
+
+
 
 -- Állítás kiértékelésénér egy state-be eltároljuk a jelenlegi környezetet
 evalStatement :: (MonadError InterpreterError m, MonadState Env m) => Statement -> m ()
