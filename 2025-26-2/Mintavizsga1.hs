@@ -427,7 +427,7 @@ data Val
   | VFloat Double         -- double kiértékelt alakban
   | VBool Bool            -- bool kiértékelt alakban
   | VLam String Env Exp   -- lam kiértékelt alakban
-  | Vlist [Val]
+  | VList [Val]
   deriving (Eq, Show)
 
 type Env = [(String, Val)] -- a jelenlegi környezet
@@ -436,7 +436,7 @@ data InterpreterError
   = TypeError { message :: String } -- típushiba üzenettel
   | ScopeError { message :: String } -- variable not in scope üzenettel
   | DivByZeroError { message :: String } -- 0-val való osztás hibaüzenettel
-  | IndexOutOfRangeError { message :: String} -- index out of range hibaüzenettel
+  | IndexOutOfRangeError Int [Val] -- index out of range
   deriving (Eq, Show)
 
 -- Értékeljünk ki egy kifejezést!
@@ -462,6 +462,7 @@ evalExp exp env = case exp of
     case (v1, v2) of
       (VInt i1, VInt i2) -> return (VInt (i1 + i2))
       (VFloat f1, VFloat f2) -> return (VFloat (f1 + f2))
+      (VList l1, VList l2) -> return (VList (l1 ++ l2))
       _ -> throwError (TypeError $ "Type error in the operands of +\nSTACK TRACE:\n" ++ stackTrace)
   e1 :- e2 -> do
     v1 <- evalExp e1 env
@@ -493,6 +494,7 @@ evalExp exp env = case exp of
       (VInt i1, VInt i2) -> return (VBool (i1 == i2))
       (VFloat f1, VFloat f2) -> return (VBool (f1 == f2))
       (VBool b1, VBool b2) -> return (VBool (b1 == b2))
+      (VList l1, VList l2) -> return (VBool (l1 == l2))
       _ -> throwError (TypeError $ "Type error in the operands of ==\nSTACK TRACE:\n" ++ stackTrace)
   e1 :$ e2 -> do
     v1 <- evalExp e1 env
@@ -500,7 +502,24 @@ evalExp exp env = case exp of
     case v1 of
       (VLam s env' e) -> evalExp e ((s, v2) : env')
       _ -> throwError (TypeError $ "Type error in the operands of function application\nSTACK TRACE:\n" ++ stackTrace)
+  e1 :!! e2 -> do
+    v1 <- evalExp e1 env
+    v2 <- evalExp e2 env
+    case (v1, v2) of
+      (VList ls, VInt i) -> case ls !? i of
+        Just x -> pure x
+        Nothing -> throwError $ IndexOutOfRangeError i ls 
+      _ -> throwError $ TypeError "Operands of indexing (!!) operator should be list and int"
+  ListLit es -> VList <$> foldrM h [] es where
+    h e vs = do
+      v <- evalExp e env
+      pure $ v : vs
 
+(!?) :: [a] -> Int -> Maybe a
+[] !? _ = Nothing
+(x : xs) !? i
+  | i <= 0 = Just x
+  | otherwise = xs !? (i - 1)
 
 updateEnv :: Env -> String -> Val -> Env
 updateEnv [] s v = [(s,v)]
@@ -522,6 +541,16 @@ evalStatement st = case st of
     env <- get
     v <- evalExp e env
     put (updateEnv env x v)
+  AssignAt x eind e -> do
+    env <- get
+    vi <- evalExp eind env
+    vls <- evalExp (Var x) env
+    va <- evalExp e env
+    case (vls, vi) of 
+      (VList ls, VInt i) -> case ls !? i of 
+        Just _ -> put $ updateEnv env x $ VList $ take (i) ls ++ [va] ++ drop (i + 1) ls
+        Nothing -> throwError $ IndexOutOfRangeError i ls
+      _ -> throwError $ TypeError "Type error: operands of _ !! _ := _ must be list and integer and any expression"
   If e sts -> do
     env <- get
     v1 <- evalExp e env
@@ -538,5 +567,3 @@ evalStatement st = case st of
         evalStatement (While e sts)
       VBool _ -> pure ()
       _ -> throwError (TypeError $ "Type error in the condition of 'while'\nSTACK TRACE:\n" ++ stackTrace)
-
-
